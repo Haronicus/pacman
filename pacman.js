@@ -221,7 +221,14 @@ Pacman.Ghost = function (game, map, colour) {
         var oldPos = position,
             onGrid = onGridSquare(position),
             npos   = null;
-        
+
+        if(!this.isVunerable()){
+             return {
+                   "new" : oldPos,
+                   "old" : oldPos
+               };
+        }
+
         if (due !== direction) {
             
             npos = getNewCoord(due, position);
@@ -245,7 +252,8 @@ Pacman.Ghost = function (game, map, colour) {
                 "y" : pointToCoord(nextSquare(npos.y, direction)),
                 "x" : pointToCoord(nextSquare(npos.x, direction))
             })) {
-            
+
+
             due = getRandomDirection();            
             return move(ctx);
         }
