@@ -32,8 +32,8 @@ Pacman.Ghost = function (game, map, colour) {
         due       = null;
     
     function getNewCoord(dir, current) { 
-        
-        var speed  = isVunerable() ? 1 : isHidden() ? 4 : 2,
+        //Slow down speed because they're smarter now
+        var speed  = 2,
             xSpeed = (dir === LEFT && -speed || dir === RIGHT && speed || 0),
             ySpeed = (dir === DOWN && speed || dir === UP && -speed || 0);
     
@@ -75,10 +75,10 @@ Pacman.Ghost = function (game, map, colour) {
         return moves[Math.floor(Math.random() * 2)];
     };
     
-    function reset() {
+    function reset(x) {
         eaten = null;
         eatable = null;
-        position = {"x": 90, "y": 80};
+        position = {"x": x, "y": 80};
         direction = getRandomDirection();
         due = getRandomDirection();
     };
@@ -216,17 +216,44 @@ Pacman.Ghost = function (game, map, colour) {
         return false;
     };
     
-    function move(ctx) {
+    function move(ctx, userPos, map, user) {
         
         var oldPos = position,
             onGrid = onGridSquare(position),
             npos   = null;
 
-        if(!this.isVunerable()){
-             return {
-                   "new" : oldPos,
-                   "old" : oldPos
-               };
+        //Ghost chases player if it's not vulnerable
+        if (
+            !isVunerable() &&
+            isDangerous() &&
+            userPos &&
+            !user.eaten
+        ) {
+            npos = getNewCoord(direction, oldPos);
+            if ((oldPos.x % 10 != 0 || oldPos.y % 10 != 0)) {
+                due = direction;
+                position = npos;
+                return {
+                    "new" : position,
+                    "old" : oldPos
+                };
+            }
+
+            direction = map.getShortestPathDir(oldPos.x,oldPos.y,userPos.x,userPos.y, direction);
+            due = direction;
+            npos = getNewCoord(direction, position);
+            position = npos;
+
+            var tmp = pane(position);
+
+            if (tmp) {
+                position = tmp;
+            }
+
+            return {
+                "new" : position,
+                "old" : oldPos
+            };
         }
 
         if (due !== direction) {
@@ -252,10 +279,9 @@ Pacman.Ghost = function (game, map, colour) {
                 "y" : pointToCoord(nextSquare(npos.y, direction)),
                 "x" : pointToCoord(nextSquare(npos.x, direction))
             })) {
-
-
+            
             due = getRandomDirection();            
-            return move(ctx);
+            return move(ctx, userPos, map, user);
         }
 
         position = npos;        
@@ -264,7 +290,7 @@ Pacman.Ghost = function (game, map, colour) {
         if (tmp) { 
             position = tmp;
         }
-        
+
         due = getRandomDirection();
         
         return {
@@ -395,7 +421,7 @@ Pacman.User = function (game, map) {
     };
 
     function move(ctx) {
-        
+
         var npos        = null, 
             nextWhole   = null, 
             oldPosition = position,
@@ -544,6 +570,113 @@ Pacman.Map = function (size) {
         blockSize = size,
         pillSize  = 0,
         map       = null;
+
+    //Shortest path algorithm
+    //Breadth first search
+    function getShortestPathDir(x1,y1,x2,y2,direction) {
+        x1i = Math.floor(x1/10);
+        y1i = Math.floor(y1/10);
+        x2i = Math.floor(x2/10);
+        y2i = Math.floor(y2/10);
+
+        if(x1i == x2i && y1i == y2i)
+            return direction;
+
+        paths = [[{"x":x1i,"y":y1i}]];
+        visited = [{"x":x1i,"y":y1i}];
+        shortest = null;
+        while(!shortest) {
+            path = paths.shift();
+            last = path[path.length-1];
+
+            if(!last)
+                debugger;
+
+            //Left
+            if (
+                last.x-1 > 0 &&
+                !visited.find(v => v.x == last.x-1 && v.y == last.y) &&
+                map[last.y][last.x-1] != 0 &&
+                map[last.y][last.x-1] != 3
+            ) {
+                newPath = JSON.parse(JSON.stringify(path));
+                newPath.push({"x":last.x-1,"y":last.y});
+                if(last.x-1 == x2i && last.y == y2i) {
+                    shortest = newPath;
+                } else {
+                    paths.push(newPath);
+                    visited.push({"x":last.x-1,"y":last.y});
+                }
+            }
+
+            //Right
+            if (
+                last.x+1 < 18 &&
+                !visited.find(v => v.x == last.x+1 && v.y == last.y) &&
+                map[last.y][last.x+1] != 0 &&
+                map[last.y][last.x+1] != 3
+            ) {
+                newPath = JSON.parse(JSON.stringify(path));
+                newPath.push({"x":last.x+1,"y":last.y});
+                if(last.x+1 == x2i && last.y == y2i) {
+                    shortest = newPath;
+                } else {
+                    paths.push(newPath);
+                    visited.push({"x":last.x+1,"y":last.y});
+                }
+            }
+
+            //Up
+            if (
+                last.y-1 > 0 &&
+                !visited.find(v => v.x == last.x && v.y == last.y-1) &&
+                map[last.y-1][last.x] != 0 &&
+                map[last.y-1][last.x] != 3
+            ) {
+                newPath = JSON.parse(JSON.stringify(path));
+                newPath.push({"x":last.x,"y":last.y-1});
+                if(last.x == x2i && last.y-1 == y2i) {
+                    shortest = newPath;
+                } else {
+                    paths.push(newPath);
+                    visited.push({"x":last.x,"y":last.y-1});
+                }
+            }
+
+            //Down
+            if (
+                last.y+1 < 21 &&
+                !visited.find(v => v.x == last.x && v.y == last.y+1) &&
+                map[last.y+1][last.x] != 0 &&
+                map[last.y+1][last.x] != 3
+            ) {
+                newPath = JSON.parse(JSON.stringify(path));
+                newPath.push({"x":last.x,"y":last.y+1});
+                if(last.x == x2i && last.y+1 == y2i) {
+                    shortest = newPath;
+                } else {
+                    paths.push(newPath);
+                    visited.push({"x":last.x,"y":last.y+1});
+                }
+            }
+
+        }
+
+        if(!shortest[1])
+            debugger;
+
+        if(shortest[1].x < x1i)
+            return LEFT;
+
+        if(shortest[1].x > x1i)
+            return RIGHT;
+
+        if(shortest[1].y < y1i)
+            return UP;
+
+        return DOWN;
+
+    }
     
     function withinBounds(y, x) {
         return y >= 0 && y < height && x >= 0 && x < width;
@@ -682,6 +815,7 @@ Pacman.Map = function (size) {
     reset();
     
     return {
+        "getShortestPathDir": getShortestPathDir,
         "draw"         : draw,
         "drawBlock"    : drawBlock,
         "drawPills"    : drawPills,
@@ -823,8 +957,9 @@ var PACMAN = (function () {
     
     function startLevel() {        
         user.resetPosition();
-        for (var i = 0; i < ghosts.length; i += 1) { 
-            ghosts[i].reset();
+        for (var i = 0; i < ghosts.length; i += 1) {
+            //Separate ghost starting positions
+            ghosts[i].reset(80+i*10);
         }
         audio.play("start");
         timerStart = tick;
@@ -925,7 +1060,7 @@ var PACMAN = (function () {
         ghostPos = [];
 
         for (i = 0, len = ghosts.length; i < len; i += 1) {
-            ghostPos.push(ghosts[i].move(ctx));
+            ghostPos.push(ghosts[i].move(ctx, userPos, map, user));
         }
         u = user.move(ctx);
         
@@ -1141,9 +1276,9 @@ Pacman.MAP = [
 	[0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0],
 	[0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
 	[2, 2, 2, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 2, 2, 2],
-	[0, 0, 0, 0, 1, 0, 1, 0, 0, 3, 0, 0, 1, 0, 1, 0, 0, 0, 0],
-	[2, 2, 2, 2, 1, 1, 1, 0, 3, 3, 3, 0, 1, 1, 1, 2, 2, 2, 2],
-	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+	[2, 2, 2, 0, 1, 0, 1, 0, 0, 3, 0, 0, 1, 0, 1, 0, 2, 2, 2],
+	[2, 2, 2, 0, 1, 1, 1, 0, 3, 3, 3, 0, 1, 1, 1, 0, 2, 2, 2],
+	[2, 2, 2, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 2, 2],
 	[2, 2, 2, 0, 1, 0, 1, 1, 1, 2, 1, 1, 1, 0, 1, 0, 2, 2, 2],
 	[0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
 	[0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0],
@@ -1158,8 +1293,8 @@ Pacman.MAP = [
 
 Pacman.WALLS = [
     
-    [{"move": [0, 9.5]}, {"line": [3, 9.5]},
-     {"curve": [3.5, 9.5, 3.5, 9]}, {"line": [3.5, 8]},
+    [{"move": [3.5, 12]},
+      {"line": [3.5, 8]},
      {"curve": [3.5, 7.5, 3, 7.5]}, {"line": [1, 7.5]},
      {"curve": [0.5, 7.5, 0.5, 7]}, {"line": [0.5, 1]},
      {"curve": [0.5, 0.5, 1, 0.5]}, {"line": [9, 0.5]},
@@ -1169,8 +1304,7 @@ Pacman.WALLS = [
      {"curve": [9.5, 0.5, 10, 0.5]}, {"line": [18, 0.5]},
      {"curve": [18.5, 0.5, 18.5, 1]}, {"line": [18.5, 7]},
      {"curve": [18.5, 7.5, 18, 7.5]}, {"line": [16, 7.5]},
-     {"curve": [15.5, 7.5, 15.5, 8]}, {"line": [15.5, 9]},
-     {"curve": [15.5, 9.5, 16, 9.5]}, {"line": [19, 9.5]}],
+     {"curve": [15.5, 7.5, 15.5, 8]}, {"line": [15.5, 12]}],
 
     [{"move": [2.5, 5.5]}, {"line": [3.5, 5.5]}],
 
@@ -1209,7 +1343,7 @@ Pacman.WALLS = [
     [{"move": [13, 7.5]}, {"curve": [13.5, 7.5, 13.5, 8]},
      {"line": [13.5, 9.5]}],
 
-    [{"move": [0, 11.5]}, {"line": [3, 11.5]}, {"curve": [3.5, 11.5, 3.5, 12]},
+    [{"move": [3.5, 11.5]},
      {"line": [3.5, 13]}, {"curve": [3.5, 13.5, 3, 13.5]}, {"line": [1, 13.5]},
      {"curve": [0.5, 13.5, 0.5, 14]}, {"line": [0.5, 17]},
      {"curve": [0.5, 17.5, 1, 17.5]}, {"line": [1.5, 17.5]}],
@@ -1220,8 +1354,7 @@ Pacman.WALLS = [
     [{"move": [18, 17.5]}, {"curve": [18.5, 17.5, 18.5, 17]},
      {"line": [18.5, 14]}, {"curve": [18.5, 13.5, 18, 13.5]},
      {"line": [16, 13.5]}, {"curve": [15.5, 13.5, 15.5, 13]},
-     {"line": [15.5, 12]}, {"curve": [15.5, 11.5, 16, 11.5]},
-     {"line": [19, 11.5]}],
+     {"line": [15.5, 12]}, ],
 
     [{"move": [5.5, 11.5]}, {"line": [5.5, 13.5]}],
     [{"move": [13.5, 11.5]}, {"line": [13.5, 13.5]}],
